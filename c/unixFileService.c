@@ -952,6 +952,38 @@ static int serveUnixFileChangeOwner (HttpService *service, HttpResponse *respons
   return 0;
 }
 
+static int serveUnixFileChangeTag (HttpService *service, HttpResponse *response) {
+  HttpRequest *request = response->request;
+  char *routeFileFrag = stringListPrint(request->parsedFile, 2, 1000, "/", 0);
+  char *encodedRouteFileName = stringConcatenate(response->slh, "/", routeFileFrag);
+  char *routeFileName = cleanURLParamValue(response->slh, encodedRouteFileName);
+
+  char *codepage  = getQueryParam(response->request, "codeset");
+  char *recursive = getQueryParam(response->request, "recursive");
+  char *pattern   = getQueryParam(response->request, "pattern");
+  char *type      = getQueryParam(response->request, "type");
+
+  if (!strcmp(request->method, methodPOST)) {
+    directoryChangeTagAndRespond (response, routeFileName,
+                                  type, codepage, recursive, pattern);
+  }
+  else if (!strcmp(request->method, methodDELETE)) {
+      char type[10];
+      strncpy (type, "delete", 10);
+      directoryChangeDeleteTagAndRespond (response, routeFileName,
+                                  type, codepage, recursive, pattern);
+    }
+  else {
+    jsonPrinter *out = respondWithJsonPrinter(response);
+
+    setResponseStatus(response, 405, "Method Not Allowed");
+    setDefaultJSONRESTHeaders(response);
+    addStringHeader(response, "Allow", "POST");
+    writeHeader(response);
+    finishResponse(response);
+  }
+  return 0;
+}
 
 static int serveTableOfContents(HttpService *service, HttpResponse *response) {
   HttpRequest *request = response->request;
@@ -984,6 +1016,14 @@ static int serveTableOfContents(HttpService *service, HttpResponse *response) {
 
     jsonStartObject(out, NULL);
     jsonAddString(out, "mkdir", "/unixfile/mkdir/{absPath}");
+    jsonEndObject(out);
+
+    jsonStartObject(out, NULL);
+    jsonAddString(out, "chtag", "/unixfile/chtag/{absPath}");
+    jsonEndObject(out);
+
+    jsonStartObject(out, NULL);
+    jsonAddString(out, "chown", "/unixfile/chown/{absPath}");
     jsonEndObject(out);
 
     jsonStartObject(out, NULL);
@@ -1088,6 +1128,16 @@ void installUnixFileChangeOwnerService(HttpServer *server) {
   httpService->runInSubtask = TRUE;
   httpService->doImpersonation = TRUE;
   httpService->serviceFunction = serveUnixFileChangeOwner;
+  registerHttpService(server, httpService);
+}
+
+void installUnixFileChangeTagService(HttpServer *server) {
+  HttpService *httpService = makeGeneratedService("UnixFileChtag",
+      "/unixfile/chtag/**");
+  httpService->authType = SERVICE_AUTH_NATIVE_WITH_SESSION_TOKEN;
+  httpService->serviceFunction = serveUnixFileChangeTag;
+  httpService->runInSubtask = TRUE;
+  httpService->doImpersonation = TRUE;
   registerHttpService(server, httpService);
 }
 
